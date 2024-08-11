@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="Content-Style-Type" content="text/css" />
+<meta name="generator" content="pandoc" />
+
+
+
+<title>Practical Machine Learning Project</title>
+
+<script src="data:application/x-javascript"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link href="data:text/css" rel="stylesheet" />
+<link href="data:text/css" rel="stylesheet" />
+<script src="data:application/x-javascript"></script>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link href="data:text/css" rel="stylesheet" type="text/css" />
+<script src="data:application/x-javascript"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type="text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div id="header">
+<h1 class="title">Practical Machine Learning Project</h1>
+</div>
+
+
+<p><strong>Synopsis</strong></p>
+<p>In this project, we'll use accelerometer data to develop a prediction model that will tell us how a certain user is lifting weights.</p>
+<p>The dataset consists on 5 classes:</p>
+<p>. The subject is lifting weights exactly according to the specification (Class A).</p>
+<p>. Throwing the elbow to the front (Class B).</p>
+<p>. Lifting the dumbbell only halfway (Class C).</p>
+<p>. Lowering the dumbbell only halfway (Class D).</p>
+<p>. Throwing the hips to the front (Class E).</p>
+<p>For more information and description about the dataset, see the official website: <a href="http://groupware.les.inf.puc-rio.br/har">http://groupware.les.inf.puc-rio.br/har</a></p>
+<p><strong>Getting the data</strong></p>
+<p>We will use the files `pml-training.csv` for training and `pml-testing.csv` for predictions. If the files are not present, they will be downloaded.</p>
+<pre class="r"><code># Download and read the training data
+if (!file.exists("pml-training.csv")) {
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv", method = 'curl')
+}
+training_data <- read.csv("pml-training.csv", na.strings = c("NA", ""))
+
+# Download and read the testing data
+if (!file.exists("pml-testing.csv")) {
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv", method = 'curl')
+}
+validation_data <- read.csv("pml-testing.csv")</code></pre>
+<p><strong>Data preprocessing</strong></p>
+<p>Load necessary libraries and set a seed for reproducibility.</p>
+<pre class="r"><code>library(caret)</code></pre>
+<pre><code>## Loading required package: lattice
+## Loading required package: ggplot2</code></pre>
+<pre class="r"><code>library(randomForest)</code></pre>
+<pre><code>## randomForest 4.6-10
+## Type rfNews() to see new features/changes/bug fixes.</code></pre>
+<p>Set a seed for reproducibility.</p>
+<pre class="r"><code>set.seed(9)</code></pre>
+<p>Partition the training data into training and testing sets.</p>
+<pre class="r"><code>inTrain <- createDataPartition(y = training_data$classe, p = 0.7, list = FALSE)
+training_set <- training_data[inTrain, ]
+testing_set <- training_data[-inTrain, ]
+</code></pre>
+<p>Remove columns with NA values and unnecessary columns from the training, validation, and testing datasets.</p>
+<pre class="r"><code># Function to clean data
+clean_data <- function(data) {
+  na_columns <- sapply(data, function(x) sum(is.na(x)))
+  columns_with_na <- names(na_columns[na_columns > 0])
+  data <- data[, !names(data) %in% columns_with_na]
+  data <- data[, !names(data) %in% c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window")]
+  return(data)
+}
+
+# Clean datasets
+training_set <- clean_data(training_set)
+testing_set <- clean_data(testing_set)
+validation_data <- clean_data(validation_data)
+</code></pre>
+<pre><code>##                        X                user_name     raw_timestamp_part_1 
+##                        0                        0                        0 
+##     raw_timestamp_part_2           cvtd_timestamp               new_window 
+##                        0                        0                        0 
+##               num_window                roll_belt               pitch_belt 
+##                        0                        0                        0 
+##                 yaw_belt         total_accel_belt       kurtosis_roll_belt 
+##                        0                        0                    13460 
+##      kurtosis_picth_belt        kurtosis_yaw_belt       skewness_roll_belt 
+##                    13460                    13460                    13460 
+##     skewness_roll_belt.1        skewness_yaw_belt            max_roll_belt 
+##                    13460                    13460                    13460 
+##           max_picth_belt             max_yaw_belt            min_roll_belt 
+##                    13460                    13460                    13460 
+##           min_pitch_belt             min_yaw_belt      amplitude_roll_belt 
+##                    13460                    13460                    13460 
+##     amplitude_pitch_belt       amplitude_yaw_belt     var_total_accel_belt 
+##                    13460                    13460                    13460 
+##            avg_roll_belt         stddev_roll_belt            var_roll_belt 
+##                    13460                    13460                    13460 
+##           avg_pitch_belt        stddev_pitch_belt           var_pitch_belt 
+##                    13460                    13460                    13460 
+##             avg_yaw_belt          stddev_yaw_belt             var_yaw_belt 
+##                    13460                    13460                    13460 
+##             gyros_belt_x             gyros_belt_y             gyros_belt_z 
+##                        0                        0                        0 
+##             accel_belt_x             accel_belt_y             accel_belt_z 
+##                        0                        0                        0 
+##            magnet_belt_x            magnet_belt_y            magnet_belt_z 
+##                        0                        0                        0 
+##                 roll_arm                pitch_arm                  yaw_arm 
+##                        0                        0                        0 
+##          total_accel_arm            var_accel_arm             avg_roll_arm 
+##                        0                    13460                    13460 
+##          stddev_roll_arm             var_roll_arm            avg_pitch_arm 
+##                    13460                    13460                    13460 
+##         stddev_pitch_arm            var_pitch_arm              avg_yaw_arm 
+##                    13460                    13460                    13460 
+##           stddev_yaw_arm              var_yaw_arm              gyros_arm_x 
+##                    13460                    13460                        0 
+##              gyros_arm_y              gyros_arm_z              accel_arm_x 
+##                        0                        0                        0 
+##              accel_arm_y              accel_arm_z             magnet_arm_x 
+##                        0                        0                        0 
+##             magnet_arm_y             magnet_arm_z        kurtosis_roll_arm 
+##                        0                        0                    13460 
+##       kurtosis_picth_arm         kurtosis_yaw_arm        skewness_roll_arm 
+##                    13460                    13460                    13460 
+##       skewness_pitch_arm         skewness_yaw_arm             max_roll_arm 
+##                    13460                    13460                    13460 
+##            max_picth_arm              max_yaw_arm             min_roll_arm 
+##                    13460                    13460                    13460 
+##            min_pitch_arm              min_yaw_arm       amplitude_roll_arm 
+##                    13460                    13460                    13460 
+##      amplitude_pitch_arm        amplitude_yaw_arm            roll_dumbbell 
+##                    13460                    13460                        0 
+##           pitch_dumbbell             yaw_dumbbell   kurtosis_roll_dumbbell 
+##                        0                        0                    13460 
+##  kurtosis_picth_dumbbell    kurtosis_yaw_dumbbell   skewness_roll_dumbbell 
+##                    13460                    13460                    13460 
+##  skewness_pitch_dumbbell    skewness_yaw_dumbbell        max_roll_dumbbell 
+##                    13460                    13460                    13460 
+##       max_picth_dumbbell         max_yaw_dumbbell        min_roll_dumbbell 
+##                    13460                    13460                    13460 
+##       min_pitch_dumbbell         min_yaw_dumbbell  amplitude_roll_dumbbell 
+##                    13460                    13460                    13460 
+## amplitude_pitch_dumbbell   amplitude_yaw_dumbbell     total_accel_dumbbell 
+##                    13460                    13460                        0 
+##       var_accel_dumbbell        avg_roll_dumbbell     stddev_roll_dumbbell 
+##                    13460                    13460                    13460 
+##        var_roll_dumbbell       avg_pitch_dumbbell    stddev_pitch_dumbbell 
+##                    13460                    13460                    13460 
+##       var_pitch_dumbbell         avg_yaw_dumbbell      stddev_yaw_dumbbell 
+##                    13460                    13460                    13460 
+##         var_yaw_dumbbell         gyros_dumbbell_x         gyros_dumbbell_y 
+##                    13460                        0                        0 
+##         gyros_dumbbell_z         accel_dumbbell_x         accel_dumbbell_y 
+##                        0                        0                        0 
+##         accel_dumbbell_z        magnet_dumbbell_x        magnet_dumbbell_y 
+##                        0                        0                        0 
+##        magnet_dumbbell_z             roll_forearm            pitch_forearm 
+##                        0                        0                        0 
+##              yaw_forearm    kurtosis_roll_forearm   kurtosis_picth_forearm 
+##                        0                    13460                    13460 
+##     kurtosis_yaw_forearm    skewness_roll_forearm   skewness_pitch_forearm 
+##                    13460                    13460                    13460 
+##     skewness_yaw_forearm         max_roll_forearm        max_picth_forearm 
+##                    13460                    13460                    13460 
+##          max_yaw_forearm         min_roll_forearm        min_pitch_forearm 
+##                    13460                    13460                    13460 
+##          min_yaw_forearm   amplitude_roll_forearm  amplitude_pitch_forearm 
+##                    13460                    13460                    13460 
+##    amplitude_yaw_forearm      total_accel_forearm        var_accel_forearm 
+##                    13460                        0                    13460 
+##         avg_roll_forearm      stddev_roll_forearm         var_roll_forearm 
+##                    13460                    13460                    13460 
+##        avg_pitch_forearm     stddev_pitch_forearm        var_pitch_forearm 
+##                    13460                    13460                    13460 
+##          avg_yaw_forearm       stddev_yaw_forearm          var_yaw_forearm 
+##                    13460                    13460                    13460 
+##          gyros_forearm_x          gyros_forearm_y          gyros_forearm_z 
+##                        0                        0                        0 
+##          accel_forearm_x          accel_forearm_y          accel_forearm_z 
+##                        0                        0                        0 
+##         magnet_forearm_x         magnet_forearm_y         magnet_forearm_z 
+##                        0                        0                        0 
+##                   classe 
+##                        0</code></pre>
+<pre class="r"><code>columnsWithNA = names(naColumns[naColumns &gt; 0]) #Vector with all the columns that has NA values
+training = training[, !names(training) %in% columnsWithNA] #Remove those columns from the training set
+names(training)</code></pre>
+<pre><code>##  [1] &quot;X&quot;                    &quot;user_name&quot;            &quot;raw_timestamp_part_1&quot;
+##  [4] &quot;raw_timestamp_part_2&quot; &quot;cvtd_timestamp&quot;       &quot;new_window&quot;          
+##  [7] &quot;num_window&quot;           &quot;roll_belt&quot;            &quot;pitch_belt&quot;          
+## [10] &quot;yaw_belt&quot;             &quot;total_accel_belt&quot;     &quot;gyros_belt_x&quot;        
+## [13] &quot;gyros_belt_y&quot;         &quot;gyros_belt_z&quot;         &quot;accel_belt_x&quot;        
+## [16] &quot;accel_belt_y&quot;         &quot;accel_belt_z&quot;         &quot;magnet_belt_x&quot;       
+## [19] &quot;magnet_belt_y&quot;        &quot;magnet_belt_z&quot;        &quot;roll_arm&quot;            
+## [22] &quot;pitch_arm&quot;            &quot;yaw_arm&quot;              &quot;total_accel_arm&quot;     
+## [25] &quot;gyros_arm_x&quot;          &quot;gyros_arm_y&quot;          &quot;gyros_arm_z&quot;         
+## [28] &quot;accel_arm_x&quot;          &quot;accel_arm_y&quot;          &quot;accel_arm_z&quot;         
+## [31] &quot;magnet_arm_x&quot;         &quot;magnet_arm_y&quot;         &quot;magnet_arm_z&quot;        
+## [34] &quot;roll_dumbbell&quot;        &quot;pitch_dumbbell&quot;       &quot;yaw_dumbbell&quot;        
+## [37] &quot;total_accel_dumbbell&quot; &quot;gyros_dumbbell_x&quot;     &quot;gyros_dumbbell_y&quot;    
+## [40] &quot;gyros_dumbbell_z&quot;     &quot;accel_dumbbell_x&quot;     &quot;accel_dumbbell_y&quot;    
+## [43] &quot;accel_dumbbell_z&quot;     &quot;magnet_dumbbell_x&quot;    &quot;magnet_dumbbell_y&quot;   
+## [46] &quot;magnet_dumbbell_z&quot;    &quot;roll_forearm&quot;         &quot;pitch_forearm&quot;       
+## [49] &quot;yaw_forearm&quot;          &quot;total_accel_forearm&quot;  &quot;gyros_forearm_x&quot;     
+## [52] &quot;gyros_forearm_y&quot;      &quot;gyros_forearm_z&quot;      &quot;accel_forearm_x&quot;     
+## [55] &quot;accel_forearm_y&quot;      &quot;accel_forearm_z&quot;      &quot;magnet_forearm_x&quot;    
+## [58] &quot;magnet_forearm_y&quot;     &quot;magnet_forearm_z&quot;     &quot;classe&quot;</code></pre>
+<pre class="r"><code>#Remove unnecessary columns (the first 7 columns)
+training &lt;- training[, !names(training) %in% c(&quot;X&quot;, &quot;user_name&quot;, &quot;raw_timestamp_part_1&quot;, &quot;raw_timestamp_part_2&quot;, &quot;cvtd_timestamp&quot;, &quot;new_window&quot;, &quot;num_window&quot;)]</code></pre>
+<p>For the validation set</p>
+
+<pre class="r"><code>naColumns = sapply(validation, function(x) {sum(is.na(x))}) #Make a vector of all the columns and the number of NA entries
+columnsWithNA = names(naColumns[naColumns &gt; 0]) #Vector with all the columns that has NA values
+validation = validation[, !names(validation) %in% columnsWithNA] #Remove those columns from the training set.
+validation &lt;- validation[, !names(validation) %in% c(&quot;X&quot;, &quot;user_name&quot;, &quot;raw_timestamp_part_1&quot;, &quot;raw_timestamp_part_2&quot;, &quot;cvtd_timestamp&quot;, &quot;new_window&quot;, &quot;num_window&quot;)]</code></pre>
+<p>For the testing set</p>
+
+<pre class="r"><code>naColumns = sapply(testing, function(x) {sum(is.na(x))}) #Make a vector of all the columns and the number of NA entries
+columnsWithNA = names(naColumns[naColumns &gt; 0]) #Vector with all the columns that has NA values
+testing = testing[, !names(testing) %in% columnsWithNA] #Remove those columns from the training set.
+testing &lt;- testing[, !names(testing) %in% c(&quot;X&quot;, &quot;user_name&quot;, &quot;raw_timestamp_part_1&quot;, &quot;raw_timestamp_part_2&quot;, &quot;cvtd_timestamp&quot;, &quot;new_window&quot;, &quot;num_window&quot;)]</code></pre>
+
+
+<p>Model Building and Evaluation
+
+Train the Random Forest model and evaluate its performance</p>
+
+<pre class="r"><code>model <- randomForest(classe ~ ., data = training_set, ntree = 50)
+predictions <- predict(model, testing_set)
+confusion_matrix <- confusionMatrix(predictions, testing_set$classe)
+model_accuracy <- confusion_matrix$overall["Accuracy"]
+</code></pre>
+
+<P>Report the model accuracy</p>
+<pre><code>## Loading required namespace: e1071</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 1674    6    0    0    0
+##          B    0 1129   13    0    0
+##          C    0    4 1008   10    0
+##          D    0    0    5  953    3
+##          E    0    0    0    1 1079
+## 
+## Overall Statistics
+##                                        
+##                Accuracy : 0.993        
+##                  95% CI : (0.99, 0.995)
+##     No Information Rate : 0.284        
+##     P-Value [Acc &gt; NIR] : &lt;2e-16       
+##                                        
+##                   Kappa : 0.991        
+##  Mcnemar's Test P-Value : NA           
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity             1.000    0.991    0.982    0.989    0.997
+## Specificity             0.999    0.997    0.997    0.998    1.000
+## Pos Pred Value          0.996    0.989    0.986    0.992    0.999
+## Neg Pred Value          1.000    0.998    0.996    0.998    0.999
+## Prevalence              0.284    0.194    0.174    0.164    0.184
+## Detection Rate          0.284    0.192    0.171    0.162    0.183
+## Detection Prevalence    0.285    0.194    0.174    0.163    0.184
+## Balanced Accuracy       0.999    0.994    0.990    0.993    0.999</code></pre>
+
+<p>Our model is 0.9929 accurate.</p>
+<p>Predict the classes for the validation set</p>
+<pre class="r"><code>pvalidation_predictions <- predict(model, validation_data)
+validation_predictions
+</code></pre>
+<pre><code>##  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 
+##  B  A  B  A  A  E  D  B  A  A  B  C  B  A  E  E  A  B  B  B 
+## Levels: A B C D E</code></pre>
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
